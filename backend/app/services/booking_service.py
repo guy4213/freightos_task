@@ -5,8 +5,6 @@ Routers call this service. Service calls repositories or DB directly.
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import List
-
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -14,7 +12,7 @@ from app.models import (
     Flight, Seat, Booking, BookingSeat, Passenger,
     BookingStatus
 )
-from app.schemas import BookingIn, BookingOut, BookingSeatOut, PassengerOut
+from app.schemas import BookingIn
 from app.exceptions import (
     AppError,
     SeatTakenError,
