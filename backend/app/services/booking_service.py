@@ -8,7 +8,6 @@ from uuid import UUID
 from typing import List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 from fastapi import HTTPException
 from sqlalchemy import func
 from app.models import (
@@ -256,16 +255,15 @@ def cancel_booking(db: Session, booking_id: UUID, session_id: UUID):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found")
+        raise BookingNotFoundError()
     if booking.session_id != session_id:
-        raise HTTPException(status_code=403, detail="Not authorized to cancel this booking")
+        raise UnauthorizedCancelError()
     if booking.status == BookingStatus.cancelled:
-        raise HTTPException(status_code=422, detail="Booking is already cancelled")
+        raise AlreadyCancelledError()
 
     booking.status = BookingStatus.cancelled
     db.commit()
     db.refresh(booking)
-
     return _format_booking_out(db, booking)
 
 # ──────────────────────────────────────────────
