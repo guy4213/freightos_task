@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useBookingStore } from '../store/bookingStore'
-import { createBooking } from '../api/bookings'
-import { getSessionId } from '../utils/session'
 import type { PassengerIn } from '../types'
+import { createBooking } from '../api/bookings'
 
 function calculateAge(dob: string): number {
   const today = new Date()
@@ -25,7 +24,7 @@ interface PassengerFormProps {
 }
 
 function PassengerForm({ seatLabel, seatType, seatPrice, value, onChange, errors }: PassengerFormProps) {
-  const isInfant = value.date_of_birth ? calculateAge(value.date_of_birth) < 4 : false
+  const isInfant = value.date_of_birth ? calculateAge(value.date_of_birth) < 2 : false
 
   return (
     <div className="passenger-form">
@@ -200,7 +199,6 @@ function validate(): boolean {
     if (!validate()) return
 
     mutation.mutate({
-      session_id: getSessionId(),
       flight_id: flightId!,
       seats: selectedSeats.map(({ seat, passenger }) => ({
         seat_id: seat.id,

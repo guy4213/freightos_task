@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { fetchSeats, fetchFlights } from '../api/flights'
 import { useBookingStore } from '../store/bookingStore'
 import type { Seat } from '../types'
+import { useEffect } from 'react'
 
 const SEAT_TYPE_LABELS: Record<string, string> = {
   window: 'Window',
@@ -98,7 +99,9 @@ export default function SeatMapPage() {
   const navigate = useNavigate()
   const setFlight = useBookingStore((s) => s.setFlight)
 
-  if (flightId) setFlight(flightId)
+ useEffect(() => {
+    if (flightId) setFlight(flightId)
+  }, [flightId, setFlight])  
 
   const { data: seats, isLoading } = useQuery({
     queryKey: ['seats', flightId],

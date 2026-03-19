@@ -34,7 +34,6 @@ export interface SeatBookingIn {
 }
 
 export interface BookingIn {
-  session_id: string
   flight_id: string
   seats: SeatBookingIn[]
 }

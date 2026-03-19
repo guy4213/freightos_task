@@ -93,7 +93,7 @@ class TestInfantAdultRatio:
         with pytest.raises(HTTPException) as exc:
             _validate_infant_adult_ratio(items)
         assert exc.value.status_code == 422
-        assert "infant" in exc.value.detail.lower()
+        assert "infant" in exc.value.detail["message"].lower()
 
     def test_infant_only_fails(self):
         items = [make_passenger("Baby", days_ago(100), "0501111111")]

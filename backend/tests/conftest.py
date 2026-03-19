@@ -1,17 +1,16 @@
 import pytest
+import uuid
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
 from app.database import Base, get_db
-from app.seed import COLUMN_CONFIG, FLIGHTS_DATA
+from app.seed import COLUMN_CONFIG
 from app.models import Flight, Seat
 
-from datetime import datetime, timedelta
-import uuid
-
-# ── Use SQLite in-memory for tests (no Postgres needed) ──
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(
@@ -43,7 +42,6 @@ def client(db):
     Base.metadata.create_all(bind=engine)
     app.dependency_overrides[get_db] = override_get_db
 
-    # Seed one flight with 60 seats
     flight = Flight(
         id=uuid.uuid4(),
         flight_number="FR9999",
@@ -67,7 +65,10 @@ def client(db):
             ))
     db.commit()
 
-    yield TestClient(app), flight
+    session_id = str(uuid.uuid4())
+    test_client = TestClient(app, headers={"X-Session-ID": session_id})
+
+    yield test_client, flight, session_id
 
     Base.metadata.drop_all(bind=engine)
     app.dependency_overrides.clear()

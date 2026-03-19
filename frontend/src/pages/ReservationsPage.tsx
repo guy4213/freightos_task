@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { fetchBookings, cancelBooking } from '../api/bookings'
-import { getSessionId } from '../utils/session'
 import type { Booking } from '../types'
 
 function formatDateTime(iso: string) {
@@ -63,17 +62,16 @@ function BookingModal({ booking, onClose }: { booking: Booking; onClose: () => v
 export default function ReservationsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const sessionId = getSessionId()
   const [viewBooking, setViewBooking] = useState<Booking | null>(null)
 
   const { data: bookings, isLoading } = useQuery({
-    queryKey: ['bookings', sessionId],
-    queryFn: () => fetchBookings(sessionId),
+    queryKey: ['bookings'],
+    queryFn: () => fetchBookings(),
   })
 
   const cancelMutation = useMutation({
     mutationFn: ({ bookingId }: { bookingId: string }) =>
-      cancelBooking(bookingId, sessionId),
+      cancelBooking(bookingId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bookings'] }),
   })
 

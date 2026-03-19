@@ -16,7 +16,17 @@ from app.models import (
     BookingStatus
 )
 from app.schemas import BookingIn, BookingOut, BookingSeatOut, PassengerOut
-
+from app.exceptions import (
+    AppError,
+    SeatTakenError,
+    DuplicatePassengerNameError,
+    DuplicatePassengerPhoneError,
+    PassengerAlreadyOnFlightError,
+    TooManyInfantsError,
+    BookingNotFoundError,
+    UnauthorizedCancelError,
+    AlreadyCancelledError,
+)
 
 def _calculate_age(dob: date) -> int:
     today = date.today()
@@ -33,11 +43,8 @@ def _validate_infant_adult_ratio(seat_items: list):
     adults = len(seat_items) - infants
 
     if infants > adults:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Too many infants. You have {infants} infant(s) but only {adults} adult(s). "
-                   f"Maximum 1 infant per adult."
-        )
+      raise TooManyInfantsError(infants, adults)
+
 
 
 def _get_reserved_seat_ids_for_flight(db: Session, flight_id: UUID) -> set:
@@ -121,13 +128,8 @@ def _validate_no_duplicate_passenger_on_flight(db: Session, flight_id: UUID, sea
         )
 
         if existing:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "type": "duplicate_passenger_on_flight",
-                    "message": f'Passenger "{item.passenger.full_name}" is already booked on this flight (same name, date of birth, and phone number).'
-                }
-            )
+           raise PassengerAlreadyOnFlightError(item.passenger.full_name)
+
 def _validate_no_duplicate_passengers(seat_items: list):
     """No two passengers in the same booking can share name or phone."""
     names = []
@@ -138,25 +140,15 @@ def _validate_no_duplicate_passengers(seat_items: list):
         phone = item.passenger.phone_number.strip()
 
         if name in names:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "type": "duplicate_name",
-                    "message": f'Duplicate passenger name: "{item.passenger.full_name}". Each passenger must have a unique name.'
-                }
-            )
+           raise DuplicatePassengerNameError(item.passenger.full_name)
+
         if phone in phones:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "type": "duplicate_phone",
-                    "message": f'Duplicate phone number: "{item.passenger.phone_number}". Each passenger must have a unique phone number.'
-                }
-            )
+           raise DuplicatePassengerPhoneError(item.passenger.phone_number)
+
 
         names.append(name)
         phones.append(phone)
-def create_booking(db: Session, payload: BookingIn) -> BookingOut:
+def create_booking(db: Session, payload: BookingIn,session_id:UUID) -> dict:
     # ── Step 1: Validate infant/adult ratio ──
     _validate_infant_adult_ratio(payload.seats)
     _validate_no_duplicate_passengers(payload.seats)
@@ -167,15 +159,13 @@ def create_booking(db: Session, payload: BookingIn) -> BookingOut:
     seats_in_db = db.query(Seat).filter(Seat.id.in_(seat_ids)).all()
 
     if len(seats_in_db) != len(seat_ids):
-        raise HTTPException(status_code=404, detail="One or more seats not found")
-
+        raise AppError("SEAT_NOT_FOUND", "One or more seats not found.", 404)
+        
     # Verify all seats belong to the requested flight
     for seat in seats_in_db:
         if seat.flight_id != payload.flight_id:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Seat {seat.label} does not belong to this flight"
-            )
+            raise AppError("INVALID_SEAT", f"Seat does not belong to this flight.", 422)
+
 
     # ── Step 3: Check availability (inside transaction with row lock) ──
     # Lock the seat rows to prevent concurrent bookings
@@ -190,11 +180,9 @@ def create_booking(db: Session, payload: BookingIn) -> BookingOut:
     conflicts = [s for s in locked_seats if s.id in reserved_ids]
 
     if conflicts:
-        conflict_labels = [f"{s.row_number}{s.column_letter}" for s in conflicts]
-        raise HTTPException(
-            status_code=409,
-            detail=f"Seats already reserved: {', '.join(conflict_labels)}. Please go back and reselect."
-        )
+        conflict_labels = ", ".join([f"{s.row_number}{s.column_letter}" for s in conflicts])
+        raise SeatTakenError(conflict_labels)
+
 
     # ── Step 4: Calculate total price from DB values (never from frontend) ──
     seat_price_map = {s.id: s.base_price for s in seats_in_db}
@@ -204,19 +192,15 @@ def create_booking(db: Session, payload: BookingIn) -> BookingOut:
     for item in payload.seats:
         dob = item.passenger.date_of_birth
         if dob >= date.today():
-            raise HTTPException(
-                status_code=422,
-                detail="Date of birth must be in the past"
-            )
+            raise AppError("INVALID_DOB", "Date of birth must be in the past.", 422)
+
         age = (date.today() - dob).days // 365
         if age > 120:
-            raise HTTPException(
-                status_code=422,
-                detail="Age cannot exceed 120 years"
-            )
+           raise AppError("INVALID_DOB", "Age cannot exceed 120 years.", 422)
+
     try:
         booking = Booking(
-            session_id=payload.session_id,
+            session_id=session_id ,
             flight_id=payload.flight_id,
             booked_at=datetime.utcnow(),
             total_price=Decimal(str(total_price)),
@@ -251,10 +235,8 @@ def create_booking(db: Session, payload: BookingIn) -> BookingOut:
     except Exception as e:
         db.rollback()
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(
-                status_code=409,
-                detail="One or more seats were just taken. Please go back and reselect."
-            )
+           raise AppError("SEAT_TAKEN", "One or more seats were just taken. Please go back and reselect.", 409)
+
         raise HTTPException(status_code=500, detail="Booking failed. Please try again.")
 
     return _format_booking_out(db, booking)
